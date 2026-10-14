@@ -11,10 +11,10 @@ print("Hello from", name, "- the answer is", area)
 
 ## Running a program
 
-You need [Rust](https://rustup.rs) installed. Then:
+Morph programs use the `.mai` file extension (Morph + AI). You need [Rust](https://rustup.rs) installed. Then:
 
 ```sh
-cargo run -- examples/hello.morph
+cargo run -- examples/hello.mai
 ```
 
 ## What Morph can do today (v0.1)
@@ -43,7 +43,7 @@ These shape every feature we add.
 
    ```text
    error[E202]: there is no variable named `totl`
-    --> examples/typo.morph:3:7
+    --> examples/typo.mai:3:7
      |
    3 | print(totl * 2)
      |       ^

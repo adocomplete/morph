@@ -34,7 +34,7 @@ fn comments_and_blank_lines() {
 
 #[test]
 fn examples_run() {
-    let basics = std::fs::read_to_string("examples/basics.morph").unwrap();
+    let basics = std::fs::read_to_string("examples/basics.mai").unwrap();
     assert_eq!(
         run(&basics).unwrap(),
         "Welcome to Morph 0.1\nArea: 42\nAverage: 6.5\nHello, Morph!\n"

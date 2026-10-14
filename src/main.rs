@@ -3,7 +3,7 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let Some(path) = args.get(1) else {
-        eprintln!("usage: morph <file.morph>");
+        eprintln!("usage: morph <file.mai>");
         return ExitCode::from(2);
     };
 
