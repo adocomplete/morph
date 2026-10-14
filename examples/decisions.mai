@@ -1,0 +1,26 @@
+# Booleans are `true` and `false`. Comparisons produce them.
+let temperature = 23
+let is_warm = temperature > 20
+print("Is it warm?", is_warm)
+
+# `if` runs a block only when its condition is true.
+if temperature > 30 {
+    print("It's hot!")
+} else if temperature > 15 {
+    print("It's pleasant.")
+} else {
+    print("Bring a jacket.")
+}
+
+# Combine conditions with `and`, `or` and `not`.
+let has_umbrella = false
+let raining = true
+if raining and not has_umbrella {
+    print("You'll get wet.")
+}
+
+# `==` and `!=` work on numbers, strings and booleans.
+let name = "Morph"
+if name == "Morph" {
+    print("Hello,", name)
+}
