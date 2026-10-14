@@ -1,0 +1,16 @@
+# Variables are created with `let`.
+let name = "Morph"
+let version = 0.1
+
+print("Welcome to", name, version)
+
+# Arithmetic follows the usual rules: * and / before + and -.
+let width = 6
+let height = 7
+let area = width * height
+print("Area:", area)
+print("Average:", (width + height) / 2)
+
+# `+` also joins two strings.
+let greeting = "Hello, " + name + "!"
+print(greeting)

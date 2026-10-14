@@ -1,0 +1,3 @@
+# This program has a mistake on purpose, to show Morph's error messages.
+let total = 10
+print(totl * 2)
