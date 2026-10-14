@@ -17,7 +17,7 @@ Morph programs use the `.mai` file extension (Morph + AI). You need [Rust](https
 cargo run -- examples/hello.mai
 ```
 
-## What Morph can do today (v0.1)
+## What Morph can do today (v0.2)
 
 | Feature    | Example                         |
 |------------|---------------------------------|
@@ -28,6 +28,26 @@ cargo run -- examples/hello.mai
 | Join text  | `"Hello, " + name`              |
 | Print      | `print("total is", total)`      |
 | Comments   | `# anything after # is ignored` |
+| Booleans   | `true`, `false`                 |
+| Comparison | `==` `!=` `<` `<=` `>` `>=`     |
+| Logic      | `a and b`, `a or b`, `not a`    |
+| Decisions  | `if` / `else if` / `else`     |
+
+Blocks use `{ }`: the `{` goes at the end of the line that opens the block,
+each statement inside goes on its own line, and `}` goes on its own line
+(or before `else`, as in `} else {`). A variable made inside a block only exists inside it.
+
+```morph
+if temperature > 30 {
+    print("It's hot!")
+} else if temperature > 15 {
+    print("It's pleasant.")
+} else {
+    print("Bring a jacket.")
+}
+```
+
+See `examples/decisions.mai` for more.
 
 ## Design principles
 
@@ -37,7 +57,9 @@ These shape every feature we add.
    one way to make a variable (`let`), and calls always look like `name(...)`. Regular syntax is
    easier for a model to generate correctly and easier for a person to review.
 2. **No hidden surprises.** Morph never converts types behind your back: `"a" + 1` is an error,
-   not `"a1"`. Each `let` makes a *new* name, so reusing one by accident is caught.
+   not `"a1"`. `if 1 {` is an error because conditions must be `true` or `false`, and
+   `1 == "1"` is an error rather than a silent `false`. Each `let` makes a *new* name,
+   so reusing one by accident is caught. Logic uses words (`and`, `or`, `not`) instead of symbols.
 3. **Errors you can act on.** Every error has a stable code, an exact `file:line:column`,
    a plain-English message, and a hint that says how to fix it:
 

@@ -8,7 +8,20 @@ pub enum Tok {
     Str(String),
     Ident(String),
     Let,
+    True,
+    False,
+    If,
+    Else,
+    And,
+    Or,
+    Not,
     Equals,
+    EqEq,
+    NotEq,
+    Less,
+    LessEq,
+    Greater,
+    GreaterEq,
     Plus,
     Minus,
     Star,
@@ -16,6 +29,8 @@ pub enum Tok {
     LParen,
     RParen,
     Comma,
+    LBrace,
+    RBrace,
     Newline,
     Eof,
 }
@@ -34,6 +49,21 @@ pub fn lex(source: &str) -> Result<Vec<Token>, MorphError> {
     while i < chars.len() {
         let c = chars[i];
         let span = Span { line, col };
+
+        // Two-character operators.
+        let pair = match (c, chars.get(i + 1)) {
+            ('=', Some('=')) => Some(Tok::EqEq),
+            ('!', Some('=')) => Some(Tok::NotEq),
+            ('<', Some('=')) => Some(Tok::LessEq),
+            ('>', Some('=')) => Some(Tok::GreaterEq),
+            _ => None,
+        };
+        if let Some(tok) = pair {
+            tokens.push(Token { tok, span });
+            i += 2;
+            col += 2;
+            continue;
+        }
         let mut push = |tok: Tok| {
             tokens.push(Token {
                 tok,
@@ -62,6 +92,18 @@ pub fn lex(source: &str) -> Result<Vec<Token>, MorphError> {
             '-' => push(Tok::Minus),
             '*' => push(Tok::Star),
             '/' => push(Tok::Slash),
+            '<' => push(Tok::Less),
+            '>' => push(Tok::Greater),
+            '{' => push(Tok::LBrace),
+            '}' => push(Tok::RBrace),
+            '!' => {
+                return Err(MorphError::new(
+                    "E005",
+                    span,
+                    "Morph does not use `!` on its own",
+                    "write `not` to flip a boolean, like `not done`; `!=` means \"not equal\"",
+                ));
+            }
             '(' => push(Tok::LParen),
             ')' => push(Tok::RParen),
             ',' => push(Tok::Comma),
@@ -139,10 +181,16 @@ pub fn lex(source: &str) -> Result<Vec<Token>, MorphError> {
                     i += 1;
                 }
                 let word: String = chars[start..i].iter().collect();
-                let tok = if word == "let" {
-                    Tok::Let
-                } else {
-                    Tok::Ident(word)
+                let tok = match word.as_str() {
+                    "let" => Tok::Let,
+                    "true" => Tok::True,
+                    "false" => Tok::False,
+                    "if" => Tok::If,
+                    "else" => Tok::Else,
+                    "and" => Tok::And,
+                    "or" => Tok::Or,
+                    "not" => Tok::Not,
+                    _ => Tok::Ident(word),
                 };
                 tokens.push(Token { tok, span });
                 col += i - start;
@@ -153,7 +201,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, MorphError> {
                     "E004",
                     span,
                     format!("Morph does not understand the character `{other}`"),
-                    "remove it; Morph uses letters, digits, \"strings\", + - * / = ( ) , and # comments",
+                    "remove it; Morph uses letters, digits, \"strings\", + - * / = < > ( ) { } , and # comments",
                 ));
             }
         }

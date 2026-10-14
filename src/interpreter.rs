@@ -5,12 +5,13 @@ use std::fmt;
 use std::io::Write;
 
 use crate::error::{MorphError, Span};
-use crate::parser::{BinOp, Expr, Stmt};
+use crate::parser::{BinOp, Expr, LogicOp, Stmt};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Number(f64),
     Str(String),
+    Bool(bool),
 }
 
 impl Value {
@@ -18,6 +19,7 @@ impl Value {
         match self {
             Value::Number(_) => "number",
             Value::Str(_) => "string",
+            Value::Bool(_) => "boolean",
         }
     }
 }
@@ -27,53 +29,96 @@ impl fmt::Display for Value {
         match self {
             Value::Number(n) => write!(f, "{n}"),
             Value::Str(s) => write!(f, "{s}"),
+            Value::Bool(b) => write!(f, "{b}"),
         }
     }
 }
 
 pub struct Interpreter<W: Write> {
-    vars: HashMap<String, Value>,
+    /// One map of variables per open block; the first is the whole program.
+    scopes: Vec<HashMap<String, Value>>,
     out: W,
 }
 
 impl<W: Write> Interpreter<W> {
     pub fn new(out: W) -> Self {
         Interpreter {
-            vars: HashMap::new(),
+            scopes: vec![HashMap::new()],
             out,
         }
     }
 
     pub fn run(&mut self, program: &[Stmt]) -> Result<(), MorphError> {
         for stmt in program {
-            match stmt {
-                Stmt::Let(name, expr, span) => {
-                    if self.vars.contains_key(name) {
+            self.exec(stmt)?;
+        }
+        Ok(())
+    }
+
+    fn exec(&mut self, stmt: &Stmt) -> Result<(), MorphError> {
+        match stmt {
+            Stmt::Let(name, expr, span) => {
+                if self.lookup(name).is_some() {
+                    return Err(MorphError::new(
+                        "E201",
+                        span.clone(),
+                        format!("`{name}` already exists"),
+                        format!(
+                            "pick a new name; each `let` creates a new variable, and `{name}` was created earlier"
+                        ),
+                    ));
+                }
+                let value = self.eval(expr)?;
+                self.scopes
+                    .last_mut()
+                    .expect("there is always a scope")
+                    .insert(name.clone(), value);
+            }
+            Stmt::If {
+                cond,
+                cond_span,
+                then,
+                otherwise,
+            } => {
+                let chosen = match self.eval(cond)? {
+                    Value::Bool(true) => Some(then),
+                    Value::Bool(false) => otherwise.as_ref(),
+                    other => {
                         return Err(MorphError::new(
-                            "E201",
-                            span.clone(),
-                            format!("`{name}` already exists"),
+                            "E209",
+                            cond_span.clone(),
                             format!(
-                                "pick a new name; each `let` creates a new variable, and `{name}` was created earlier"
+                                "the condition of `if` must be true or false, but this is a {}",
+                                other.type_name()
                             ),
+                            "use a comparison, like `if count > 0 {`",
                         ));
                     }
-                    let value = self.eval(expr)?;
-                    self.vars.insert(name.clone(), value);
+                };
+                if let Some(block) = chosen {
+                    self.scopes.push(HashMap::new());
+                    let result = self.run(block);
+                    self.scopes.pop();
+                    result?;
                 }
-                Stmt::Expr(expr) => {
-                    self.eval(expr)?;
-                }
+            }
+            Stmt::Expr(expr) => {
+                self.eval(expr)?;
             }
         }
         Ok(())
+    }
+
+    fn lookup(&self, name: &str) -> Option<&Value> {
+        self.scopes.iter().rev().find_map(|scope| scope.get(name))
     }
 
     fn eval(&mut self, expr: &Expr) -> Result<Value, MorphError> {
         match expr {
             Expr::Number(n) => Ok(Value::Number(*n)),
             Expr::Str(s) => Ok(Value::Str(s.clone())),
-            Expr::Var(name, span) => self.vars.get(name).cloned().ok_or_else(|| {
+            Expr::Bool(b) => Ok(Value::Bool(*b)),
+            Expr::Var(name, span) => self.lookup(name).cloned().ok_or_else(|| {
                 MorphError::new(
                     "E202",
                     span.clone(),
@@ -93,6 +138,40 @@ impl<W: Write> Interpreter<W> {
                     "`-` only works on numbers",
                 )),
             },
+            Expr::Not(inner, span) => match self.eval(inner)? {
+                Value::Bool(b) => Ok(Value::Bool(!b)),
+                other => Err(MorphError::new(
+                    "E210",
+                    span.clone(),
+                    format!("`not` needs true or false, but got a {}", other.type_name()),
+                    "use a comparison, like `not (count == 0)`",
+                )),
+            },
+            Expr::Logic(left, op, right, span) => {
+                let word = match op {
+                    LogicOp::And => "and",
+                    LogicOp::Or => "or",
+                };
+                let check = |value: Value| match value {
+                    Value::Bool(b) => Ok(b),
+                    other => Err(MorphError::new(
+                        "E210",
+                        span.clone(),
+                        format!(
+                            "`{word}` needs true or false on both sides, but got a {}",
+                            other.type_name()
+                        ),
+                        format!("use comparisons on both sides, like `a > 0 {word} b > 0`"),
+                    )),
+                };
+                let l = check(self.eval(left)?)?;
+                // Stop early when the left side already decides the answer.
+                match (op, l) {
+                    (LogicOp::And, false) => Ok(Value::Bool(false)),
+                    (LogicOp::Or, true) => Ok(Value::Bool(true)),
+                    _ => Ok(Value::Bool(check(self.eval(right)?)?)),
+                }
+            }
             Expr::Binary(left, op, right, span) => {
                 let l = self.eval(left)?;
                 let r = self.eval(right)?;
@@ -130,8 +209,9 @@ impl<W: Write> Interpreter<W> {
 
     /// Find an existing variable whose name is one small typo away.
     fn closest_name(&self, name: &str) -> Option<String> {
-        self.vars
-            .keys()
+        self.scopes
+            .iter()
+            .flat_map(|scope| scope.keys())
             .map(|k| (edit_distance(k, name), k))
             .filter(|(d, _)| *d <= 2)
             .min()
@@ -152,6 +232,22 @@ fn binary(l: &Value, op: BinOp, r: &Value, span: &Span) -> Result<Value, MorphEr
             "check that the number on the right of `/` is not 0",
         )),
         (Number(a), BinOp::Div, Number(b)) => Ok(Number(a / b)),
+        (Number(a), BinOp::Less, Number(b)) => Ok(Bool(a < b)),
+        (Number(a), BinOp::LessEq, Number(b)) => Ok(Bool(a <= b)),
+        (Number(a), BinOp::Greater, Number(b)) => Ok(Bool(a > b)),
+        (Number(a), BinOp::GreaterEq, Number(b)) => Ok(Bool(a >= b)),
+        (_, BinOp::Eq | BinOp::NotEq, _) if l.type_name() != r.type_name() => Err(MorphError::new(
+            "E208",
+            span.clone(),
+            format!(
+                "cannot compare a {} with a {}",
+                l.type_name(),
+                r.type_name()
+            ),
+            "`==` and `!=` only compare values of the same type, so this would always be a mistake",
+        )),
+        (_, BinOp::Eq, _) => Ok(Bool(l == r)),
+        (_, BinOp::NotEq, _) => Ok(Bool(l != r)),
         (Str(a), BinOp::Add, Str(b)) => Ok(Str(format!("{a}{b}"))),
         (Str(_), BinOp::Add, Number(_)) | (Number(_), BinOp::Add, Str(_)) => Err(MorphError::new(
             "E206",
@@ -160,21 +256,23 @@ fn binary(l: &Value, op: BinOp, r: &Value, span: &Span) -> Result<Value, MorphEr
             "Morph never converts types on its own; to show both, use `print(a, b)`",
         )),
         _ => {
-            let symbol = match op {
-                BinOp::Add => "+",
-                BinOp::Sub => "-",
-                BinOp::Mul => "*",
-                BinOp::Div => "/",
+            let hint = match op {
+                BinOp::Add => "`+` works on two numbers or two strings",
+                BinOp::Less | BinOp::LessEq | BinOp::Greater | BinOp::GreaterEq => {
+                    "`<`, `<=`, `>` and `>=` only compare numbers"
+                }
+                _ => "`-`, `*` and `/` only work on numbers",
             };
             Err(MorphError::new(
                 "E207",
                 span.clone(),
                 format!(
-                    "cannot use `{symbol}` with a {} and a {}",
+                    "cannot use `{}` with a {} and a {}",
+                    op.symbol(),
                     l.type_name(),
                     r.type_name()
                 ),
-                "`-`, `*` and `/` only work on numbers; `+` works on two numbers or two strings",
+                hint,
             ))
         }
     }
